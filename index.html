@@ -1198,7 +1198,7 @@ const RULES_DATA = [
       });
     }
 
-    let items = transformRules(newRules);
+    let items = transformRules(RULES_DATA);
     items = loadItemsFromStorage(items);
     items.sort((a, b) => a.priority - b.priority);
 
