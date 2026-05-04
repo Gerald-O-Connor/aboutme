@@ -49,7 +49,7 @@ You are executing the Strategy.md Sync workflow. Read `docs/Strategy.md` and fol
      - **Track chunks per todo.** Number each chunk in file order: `(1/N)`, `(2/N)`, …, where `N` is the total number of chunks created for that todo. If a todo fits in one slot, no chunk suffix is added.
    - Use as many days as needed.
 
-6. **Create events** with `mcp__google-calendar__create-events` (one bulk call):
+6. **Create events** with `mcp__google-calendar__create-event` (one call per event — this server has no bulk variant):
    - `summary`: `Plan: <todo text>` — for split todos, append ` (i/N)` (e.g., `Plan: Set up wiki (2/3)`).
    - `description`: `<OKR.KR>` on the first line; if there are sub-bullets in the source, append them as `- <bullet>` lines.
    - `start` / `end`: ISO 8601 local time, no offset.
