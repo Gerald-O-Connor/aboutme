@@ -58,14 +58,44 @@ You are executing the Strategy.md Sync workflow. Read `docs/Strategy.md` and fol
    - `colorId`: `"2"` (Sage) — all `Plan:` events created by this sync must be sage-coloured.
    - account: `personal`, calendarId: `primary`, timeZone: `Asia/Hong_Kong`.
 
-8. **Report** a final markdown table: Time | Event | OKR. Include both pre-existing fixed events and newly created `Plan:` events for the day(s) scheduled.
+8. **Set up the Telegram check-in routine.** Ensure a recurring routine named `strategy-checkin` exists so the user gets a Telegram ping at the end of each `Plan:` event asking whether it was completed, whether the priority still holds, and what's coming up next.
+   - Call `CronList` to find any existing routine named `strategy-checkin`. If found, call `CronDelete` on it first — this guarantees the prompt below replaces any older version (idempotent refresh on every sync).
+   - Then call `CronCreate` with:
+     - **name**: `strategy-checkin`
+     - **schedule**: `0,30 0,10-23 * * *` (fires at :00 and :30 of every hour from 10:00–23:30 HKT plus 00:00/00:30 to catch events ending at 24:00)
+     - **timezone**: `Asia/Hong_Kong`
+     - **prompt** (verbatim, single self-contained instruction):
 
-9. **Commit and push Strategy.md changes.** If `git status --porcelain docs/Strategy.md` shows the file was modified by step 3:
-   - `git add docs/Strategy.md`
-   - `git commit -m "Sync strategy: move completed todos"` (use a more specific message if step 3 moved a single named item)
-   - `git push`
-   - If push fails (rejected, network), report the error and stop — do not force-push or rewrite history. The user resolves manually.
-   - If Strategy.md was not modified (no strikethroughs this run), skip — nothing to commit.
+       > You are the strategy-sync check-in agent. Send a Telegram ping at the end of each `Plan:` calendar event so the user can confirm completion and re-prioritise.
+       >
+       > 1. Call `mcp__google-calendar__get-current-time` (account `normal`, timezone `Asia/Hong_Kong`) to anchor `now`.
+       > 2. Call `mcp__google-calendar__list-events` on `primary` with `timeMin = now - 35 min` and `timeMax = now + 6 hours`, timezone `Asia/Hong_Kong`.
+       > 3. **Just-ended events**: events whose `summary` starts with `Plan:` (case-insensitive) AND whose end time falls within `[now - 30 min, now]`.
+       > 4. **Upcoming events**: the next 1–2 events whose `summary` starts with `Plan:` and whose start time is `> now`.
+       > 5. If there are no just-ended events, exit silently — no Telegram message, no output.
+       > 6. For each just-ended event, send ONE message via `mcp__plugin_telegram_telegram__reply` to `chat_id` `8689716155` with this text (substitute fields, omit the "Coming up next" block if there are no upcoming events):
+       >
+       >     🔔 "{summary}" just ended ({start HH:MM}–{end HH:MM} HKT).
+       >
+       >     • Did you complete it? (yes / no / partial)
+       >     • Is this still the right priority?
+       >
+       >     Coming up next:
+       >     • {upcoming-1 summary} @ {HH:MM}
+       >     • {upcoming-2 summary} @ {HH:MM}
+       >
+       > 7. Do not wait for a reply — exit cleanly after sending. If multiple events ended in the same window, send one message per event (no batching).
+
+   - The routine is a no-op when no `Plan:` event ended in the last 30 minutes, so it's safe to leave running between syncs.
+
+9. **Report** a final markdown table: Time | Event | OKR. Include both pre-existing fixed events and newly created `Plan:` events for the day(s) scheduled.
+
+10. **Commit and push Strategy.md changes.** If `git status --porcelain docs/Strategy.md` shows the file was modified by step 3:
+    - `git add docs/Strategy.md`
+    - `git commit -m "Sync strategy: move completed todos"` (use a more specific message if step 3 moved a single named item)
+    - `git push`
+    - If push fails (rejected, network), report the error and stop — do not force-push or rewrite history. The user resolves manually.
+    - If Strategy.md was not modified (no strikethroughs this run), skip — nothing to commit.
 
 **Failure modes to handle silently**
 - MCP auth expired → tell the user to run `/mcp` to reconnect, then stop.
