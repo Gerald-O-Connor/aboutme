@@ -58,21 +58,21 @@ You are executing the Strategy.md Sync workflow. Read `docs/Strategy.md` and fol
    - `colorId`: `"2"` (Sage) — all `Plan:` events created by this sync must be sage-coloured.
    - account: `personal`, calendarId: `primary`, timeZone: `Asia/Hong_Kong`.
 
-8. **Set up the Telegram check-in routine.** Ensure a recurring routine named `strategy-checkin` exists so the user gets a Telegram ping at the end of each `Plan:` event asking whether it was completed, whether the priority still holds, and what's coming up next.
-   - Call `CronList` to find any existing routine named `strategy-checkin`. If found, call `CronDelete` on it first — this guarantees the prompt below replaces any older version (idempotent refresh on every sync).
+8. **Set up the Telegram check-in cron.** Schedule a recurring `CronCreate` job that fires every 2 hours and pings the user via Telegram about any `Plan:` event that just ended.
+   - First call `CronList`. For each existing job whose `prompt` contains the marker phrase `strategy-sync check-in agent`, call `CronDelete` on it. This guarantees the new prompt replaces any older version (idempotent refresh on every sync).
    - Then call `CronCreate` with:
-     - **name**: `strategy-checkin`
-     - **schedule**: `0,30 0,10-23 * * *` (fires at :00 and :30 of every hour from 10:00–23:30 HKT plus 00:00/00:30 to catch events ending at 24:00)
-     - **timezone**: `Asia/Hong_Kong`
-     - **prompt** (verbatim, single self-contained instruction):
+     - `cron`: `7 */2 * * *` (every 2 hours at :07 — off-minute deliberate, see CronCreate guidance)
+     - `recurring`: `true`
+     - `durable`: `true` (persists across restarts)
+     - `prompt` (verbatim, single self-contained instruction; the marker phrase `strategy-sync check-in agent` MUST appear so the next sync can find and delete it):
 
-       > You are the strategy-sync check-in agent. Send a Telegram ping at the end of each `Plan:` calendar event so the user can confirm completion and re-prioritise.
+       > You are the strategy-sync check-in agent. Ping the user on Telegram about any `Plan:` calendar event that just ended.
        >
        > 1. Call `mcp__google-calendar__get-current-time` (account `normal`, timezone `Asia/Hong_Kong`) to anchor `now`.
-       > 2. Call `mcp__google-calendar__list-events` on `primary` with `timeMin = now - 35 min` and `timeMax = now + 6 hours`, timezone `Asia/Hong_Kong`.
-       > 3. **Just-ended events**: events whose `summary` starts with `Plan:` (case-insensitive) AND whose end time falls within `[now - 30 min, now]`.
+       > 2. Call `mcp__google-calendar__list-events` on `primary` with `timeMin = now - 2h 10min` and `timeMax = now + 6 hours`, timezone `Asia/Hong_Kong`.
+       > 3. **Just-ended events**: events whose `summary` starts with `Plan:` (case-insensitive) AND whose end time falls within `[now - 2h, now]`.
        > 4. **Upcoming events**: the next 1–2 events whose `summary` starts with `Plan:` and whose start time is `> now`.
-       > 5. If there are no just-ended events, exit silently — no Telegram message, no output.
+       > 5. If there are no just-ended events, exit silently — no Telegram message, no output. (Most fires outside the 10:30–24:00 HKT working window will be no-ops, which is expected.)
        > 6. For each just-ended event, send ONE message via `mcp__plugin_telegram_telegram__reply` to `chat_id` `8689716155` with this text (substitute fields, omit the "Coming up next" block if there are no upcoming events):
        >
        >     🔔 "{summary}" just ended ({start HH:MM}–{end HH:MM} HKT).
@@ -86,7 +86,10 @@ You are executing the Strategy.md Sync workflow. Read `docs/Strategy.md` and fol
        >
        > 7. Do not wait for a reply — exit cleanly after sending. If multiple events ended in the same window, send one message per event (no batching).
 
-   - The routine is a no-op when no `Plan:` event ended in the last 30 minutes, so it's safe to leave running between syncs.
+   - **Caveats to surface to the user (every sync run):**
+     - CronCreate jobs only fire while a Claude Code session is running and the REPL is idle. If the session is closed, no pings.
+     - Recurring jobs auto-expire after 7 days. Re-running `/strategy-sync` recreates and refreshes the cron, so weekly syncs keep it alive.
+     - The job is a no-op when no `Plan:` event ended in the last 2 hours.
 
 9. **Report** a final markdown table: Time | Event | OKR. Include both pre-existing fixed events and newly created `Plan:` events for the day(s) scheduled.
 
